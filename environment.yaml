@@ -1,0 +1,119 @@
+name: omics-platform
+channels:
+  - conda-forge
+  - bioconda
+  - pytorch
+  - nvidia
+  - defaults
+
+dependencies:
+  # === Core Python ===
+  - python=3.10
+  - pip
+  - mamba
+
+  # === CUDA Toolkit (Windows NVIDIA GPU) ===
+  - cudatoolkit=11.8
+  - cudnn>=8.9
+
+  # === RAPIDS (GPU-accelerated single-cell, Linux/WSL only) ===
+  # - rapidsai::rapids_singlecell  # Commented out: limited Windows native support
+  - cupy>=12.0                    # GPU arrays via CUDA
+  - cuml>=23.12                   # GPU ML (PCA, UMAP, clustering)
+
+  # === PyTorch with CUDA ===
+  - pytorch::pytorch>=2.1
+  - pytorch::pytorch-cuda=11.8
+
+  # === scverse ecosystem ===
+  - conda-forge::scanpy>=1.9
+  - conda-forge::squidpy>=1.4
+  - conda-forge::muon>=0.1
+  - conda-forge::mudata>=0.8
+  - conda-forge::anndata>=0.10
+
+  # === scvi-tools ===
+  - conda-forge::scvi-tools>=1.1
+
+  # === MOFA2 ===
+  - conda-forge::mofapy2
+
+  # === QIIME2 (16S) ===
+  - qiime2>=2024.2
+  - qiime2::q2-dada2
+  - qiime2::q2-feature-classifier
+  - qiime2::q2-phylogeny
+  - qiime2::q2-diversity
+  - qiime2::q2-composition
+
+  # === Metagenomics tools ===
+  - bioconda::kraken2
+  - bioconda::bracken
+  - bioconda::humann
+  - bioconda::metaphlan
+
+  # === Metagenome assembly/binning (optional) ===
+  - bioconda::megahit
+  - bioconda::metabat2
+
+  # === R and rpy2 (for R-based tools) ===
+  - conda-forge::r-base>=4.3
+  - conda-forge::rpy2>=3.5
+  - conda-forge::r-essentials
+  - bioconda::bioconductor-aldex2
+  - bioconda::bioconductor-phyloseq
+  - bioconda::bioconductor-deseq2
+  - conda-forge::r-vegan
+
+  # === Visualization ===
+  - conda-forge::matplotlib>=3.8
+  - conda-forge::seaborn>=0.13
+  - conda-forge::plotly>=5.17
+  - conda-forge::networkx
+
+  # === CLI / UI ===
+  - conda-forge::click>=8.1
+  - conda-forge::rich>=13.7
+  - conda-forge::streamlit>=1.30
+
+  # === Data Science ===
+  - conda-forge::pandas>=2.1
+  - conda-forge::numpy>=1.24
+  - conda-forge::scipy>=1.11
+  - conda-forge::scikit-learn>=1.3
+  - conda-forge::umap-learn>=0.5
+  - conda-forge::leidenalg
+
+  # === Utilities ===
+  - conda-forge::pyyaml>=6.0
+  - conda-forge::pydantic>=2.4
+  - conda-forge::tqdm
+  - conda-forge::numba
+
+  # === Database connectors ===
+  - conda-forge::requests
+  - conda-forge::geoparse
+
+  # === Development ===
+  - conda-forge::pytest>=7.4
+  - conda-forge::pytest-cov
+  - conda-forge::black
+  - conda-forge::ruff
+  - conda-forge::ipython
+  - conda-forge::jupyterlab
+
+  # === Pip-installed packages ===
+  - pip
+  - pip:
+      # Mowgli (optimal transport multi-omics, GPU via PyTorch)
+      - mowgli>=0.4
+      # Cell communication
+      - cellphonedb
+      # RNA velocity
+      - scvelo>=0.3
+      # CellTypist for annotation
+      - celltypist
+      # Harmony for batch correction
+      - harmonypy
+      # GPU monitoring
+      - pynvml

@@ -1,0 +1,88 @@
+# Multi-Omics Platform Default Configuration
+# Override per-project in projects/PROJ_XXXX/config.yaml
+
+gpu:
+  enabled: true
+  device: 0
+  memory_fraction: 0.85
+  rapids_enabled: true
+  scvi_gpu: true
+  mofa_gpu: true
+  mowgli_gpu: true
+  fallback_to_cpu: true
+
+scrna:
+  min_genes: 200
+  min_cells: 3
+  max_genes: 6000
+  max_pct_mt: 20.0
+  n_hvg: 2000
+  n_neighbors: 15
+  n_pcs: 50
+  cluster_resolution: 1.0
+  batch_key: batch
+
+spatial:
+  min_genes: 100
+  min_cells: 3
+  n_hvg: 2000
+  n_neighbors: 10
+  n_pcs: 30
+  cluster_resolution: 0.8
+
+amplicon:
+  trim_left: 0
+  trunc_len_f: 250
+  trunc_len_r: 250
+  max_ee: 2.0
+  trunc_q: 2
+  chimera_method: consensus
+  sampling_depth: 5000
+  classifier: silva-138-99-nb-classifier.qza
+
+metagenomics:
+  kraken_db: ""
+  metaphlan_db: ""
+  humann_db: ""
+  threads: 8
+  confidence: 0.1
+  read_length: 150
+
+integration:
+  n_factors: 15
+  n_latent: 30
+  max_epochs: 400
+  convergence_tolerance: 0.01
+  alignment_method: mofa
+
+viz:
+  style: nature
+  dpi: 300
+  format: pdf
+  font_family: Arial
+  font_size: 7
+  color_palette: colorblind
+  fig_width: 7.0
+  fig_height: 5.0
+
+database:
+  geo_email: ""
+  geo_api_key: ""
+  sra_threads: 4
+  cache_dir: ""
+  timeout: 300
+
+logging:
+  level: INFO
+  file: ""
+  rich_tracebacks: true
+  progress_bars: true
+
+external_tools:
+  qiime2_env: ""
+  kraken2_bin: kraken2
+  bracken_bin: bracken
+  humann_bin: humann
+  metaphlan_bin: metaphlan
+  megahit_bin: megahit
+  rscript_bin: Rscript
