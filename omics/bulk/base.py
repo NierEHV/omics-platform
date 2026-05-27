@@ -1,10 +1,13 @@
 """Extension point for bulk RNA-seq analysis."""
 
-from abc import ABC, abstractmethod
-from typing import Any
+from __future__ import annotations
 
-import anndata
-import pandas as pd
+from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    import anndata
+    import pandas as pd
 
 
 class AbstractBulkRNAAnalysis(ABC):
@@ -45,7 +48,7 @@ class AbstractBulkRNAAnalysis(ABC):
         raise NotImplementedError("Volcano plot not yet implemented.")
 
     def visualize_heatmap(
-        self, adata: anndata.AnnData, gene_list: list, **kwargs
+        self, adata: anndata.AnnData, gene_list: list[str], **kwargs
     ) -> Any:
         """Optional: heatmap of selected genes."""
         raise NotImplementedError("Heatmap visualization not yet implemented.")
