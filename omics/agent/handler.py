@@ -413,6 +413,471 @@ class OmicsAgentHandler(BaseHandler):
         except Exception as e:
             return StepOutcome({"status": "error", "msg": str(e)}, next_prompt="\n")
 
+    # ── Bulk RNA-seq Tools ──
+
+    def do_omics_bulk_import(self, args: dict, response) -> StepOutcome:
+        path = self._resolve(args.get("path", ""))
+        if not path or not os.path.exists(path):
+            return StepOutcome({"status": "error", "msg": f"File not found: {path}"}, next_prompt="\n")
+        try:
+            from omics.bulk.analysis import BulkRNAAnalysis
+            b = BulkRNAAnalysis()
+            adata = b.load_counts(path)
+            return StepOutcome({
+                "status": "success",
+                "n_samples": adata.n_obs,
+                "n_genes": adata.n_vars,
+                "msg": f"Loaded {adata.n_obs} samples x {adata.n_vars} genes",
+            }, next_prompt="\n")
+        except Exception as e:
+            return StepOutcome({"status": "error", "msg": str(e)}, next_prompt="\n")
+
+    def do_omics_bulk_de(self, args: dict, response) -> StepOutcome:
+        path = self._resolve(args.get("input", ""))
+        if not path or not os.path.exists(path):
+            return StepOutcome({"status": "error", "msg": f"File not found: {path}"}, next_prompt="\n")
+        try:
+            import anndata
+            from omics.bulk.analysis import BulkRNAAnalysis
+            b = BulkRNAAnalysis()
+            adata = anndata.read_h5ad(path)
+            de = b.differential_expression(adata, args["design"], tuple(args["contrast"]))
+            n_sig = int((de["padj"] < 0.05).sum()) if "padj" in de.columns else 0
+            return StepOutcome({
+                "status": "success",
+                "n_genes": len(de),
+                "n_significant": n_sig,
+                "top_genes": de.head(10).index.tolist(),
+                "msg": f"DE complete: {n_sig} significant genes",
+            }, next_prompt="\n")
+        except Exception as e:
+            return StepOutcome({"status": "error", "msg": str(e)}, next_prompt="\n")
+
+    def do_omics_bulk_enrich(self, args: dict, response) -> StepOutcome:
+        de_path = self._resolve(args.get("de_results_path", ""))
+        if not de_path or not os.path.exists(de_path):
+            return StepOutcome({"status": "error", "msg": f"File not found: {de_path}"}, next_prompt="\n")
+        try:
+            from omics.bulk.analysis import BulkRNAAnalysis
+            b = BulkRNAAnalysis()
+            gene_sets = args.get("gene_sets", "GO")
+            enrich = b.gene_set_enrichment(de_path, gene_sets=gene_sets)
+            n_pathways = len(enrich) if hasattr(enrich, "__len__") else 0
+            return StepOutcome({
+                "status": "success",
+                "gene_sets": gene_sets,
+                "n_pathways": n_pathways,
+                "top_results": enrich.head(10).to_dict(orient="records") if hasattr(enrich, "head") else [],
+                "msg": f"GSEA complete using {gene_sets}",
+            }, next_prompt="\n")
+        except Exception as e:
+            return StepOutcome({"status": "error", "msg": str(e)}, next_prompt="\n")
+
+    def do_omics_bulk_visualize(self, args: dict, response) -> StepOutcome:
+        path = self._resolve(args.get("input", ""))
+        if not path or not os.path.exists(path):
+            return StepOutcome({"status": "error", "msg": f"File not found: {path}"}, next_prompt="\n")
+        plot_type = args.get("plot_type", "volcano")
+        output = self._resolve(args.get("output", f"bulk_{plot_type}.pdf"))
+        try:
+            from omics.bulk.visualization import BulkViz
+            bv = BulkViz()
+            gene_list = args.get("gene_list")
+            bv.plot(path, plot_type=plot_type, gene_list=gene_list, output=output)
+            return StepOutcome({
+                "status": "success",
+                "plot_type": plot_type,
+                "output": output,
+                "msg": f"{plot_type} plot saved to {output}",
+            }, next_prompt="\n")
+        except Exception as e:
+            return StepOutcome({"status": "error", "msg": str(e)}, next_prompt="\n")
+
+    def do_omics_bulk_pipeline(self, args: dict, response) -> StepOutcome:
+        path = self._resolve(args.get("input", ""))
+        if not path or not os.path.exists(path):
+            return StepOutcome({"status": "error", "msg": f"File not found: {path}"}, next_prompt="\n")
+        output_dir = self._resolve(args.get("output_dir", "."))
+        try:
+            from omics.bulk.pipeline import run_bulk_pipeline
+            result = run_bulk_pipeline(
+                path,
+                design=args["design"],
+                contrast=tuple(args["contrast"]),
+                output_dir=Path(output_dir),
+            )
+            return StepOutcome({
+                "status": "success",
+                "n_de_genes": result.get("n_de_genes", 0),
+                "n_significant": result.get("n_significant", 0),
+                "output_dir": str(output_dir),
+                "msg": "Bulk RNA-seq pipeline complete",
+            }, next_prompt="\n")
+        except Exception as e:
+            return StepOutcome({"status": "error", "msg": str(e)}, next_prompt="\n")
+
+    # ── Spatial Tools ──
+
+    def do_omics_spatial_import(self, args: dict, response) -> StepOutcome:
+        path = self._resolve(args.get("path", ""))
+        if not path or not os.path.exists(path):
+            return StepOutcome({"status": "error", "msg": f"File not found: {path}"}, next_prompt="\n")
+        try:
+            from omics.spatial.io import import_spatial
+            modality = args.get("modality", "visium")
+            adata = import_spatial(path, modality=modality)
+            return StepOutcome({
+                "status": "success",
+                "n_spots": adata.n_obs,
+                "n_genes": adata.n_vars,
+                "modality": modality,
+                "msg": f"Imported {modality}: {adata.n_obs} spots x {adata.n_vars} genes",
+            }, next_prompt="\n")
+        except Exception as e:
+            return StepOutcome({"status": "error", "msg": str(e)}, next_prompt="\n")
+
+    def do_omics_spatial_qc(self, args: dict, response) -> StepOutcome:
+        path = self._resolve(args.get("input", ""))
+        if not path or not os.path.exists(path):
+            return StepOutcome({"status": "error", "msg": f"File not found: {path}"}, next_prompt="\n")
+        try:
+            from omics.spatial.qc import run_spatial_qc
+            from omics.utils.io import read_h5ad
+            adata = read_h5ad(Path(path))
+            adata = run_spatial_qc(adata, min_counts=args.get("min_counts", 100),
+                                   min_spots=args.get("min_spots", 3),
+                                   max_pct_mt=args.get("max_pct_mt", 20.0))
+            return StepOutcome({
+                "status": "success",
+                "n_spots": adata.n_obs,
+                "n_genes": adata.n_vars,
+                "msg": f"Spatial QC complete: {adata.n_obs} spots x {adata.n_vars} genes",
+            }, next_prompt="\n")
+        except Exception as e:
+            return StepOutcome({"status": "error", "msg": str(e)}, next_prompt="\n")
+
+    def do_omics_spatial_cluster(self, args: dict, response) -> StepOutcome:
+        path = self._resolve(args.get("input", ""))
+        if not path or not os.path.exists(path):
+            return StepOutcome({"status": "error", "msg": f"File not found: {path}"}, next_prompt="\n")
+        try:
+            from omics.spatial.analysis import run_spatial_cluster
+            from omics.utils.io import read_h5ad
+            adata = read_h5ad(Path(path))
+            adata = run_spatial_cluster(adata, resolution=args.get("resolution", 1.0),
+                                         n_neighbors=args.get("n_neighbors", 15))
+            n_clusters = adata.obs["leiden"].nunique() if "leiden" in adata.obs else 0
+            return StepOutcome({
+                "status": "success",
+                "n_clusters": n_clusters,
+                "msg": f"Spatial clustering: {n_clusters} clusters",
+            }, next_prompt="\n")
+        except Exception as e:
+            return StepOutcome({"status": "error", "msg": str(e)}, next_prompt="\n")
+
+    def do_omics_spatial_deconvolve(self, args: dict, response) -> StepOutcome:
+        path = self._resolve(args.get("input", ""))
+        reference = self._resolve(args.get("reference", ""))
+        if not path or not os.path.exists(path):
+            return StepOutcome({"status": "error", "msg": f"File not found: {path}"}, next_prompt="\n")
+        if not reference or not os.path.exists(reference):
+            return StepOutcome({"status": "error", "msg": f"Reference file not found: {reference}"}, next_prompt="\n")
+        try:
+            from omics.spatial.deconvolution import run_cell2location
+            adata = run_cell2location(path, reference)
+            n_types = adata.uns.get("n_cell_types", 0) if hasattr(adata, "uns") else 0
+            return StepOutcome({
+                "status": "success",
+                "n_cell_types": n_types,
+                "msg": f"Spatial deconvolution complete: {n_types} cell types",
+            }, next_prompt="\n")
+        except Exception as e:
+            return StepOutcome({"status": "error", "msg": str(e)}, next_prompt="\n")
+
+    def do_omics_spatial_niche(self, args: dict, response) -> StepOutcome:
+        path = self._resolve(args.get("input", ""))
+        if not path or not os.path.exists(path):
+            return StepOutcome({"status": "error", "msg": f"File not found: {path}"}, next_prompt="\n")
+        try:
+            from omics.spatial.analysis import run_niche_analysis
+            cluster_key = args.get("cluster_key", "leiden")
+            result = run_niche_analysis(path, cluster_key=cluster_key)
+            return StepOutcome({
+                "status": "success",
+                "cluster_key": cluster_key,
+                "n_niches": result.get("n_niches", 0),
+                "msg": f"Niche analysis complete: {result.get('n_niches', 0)} niches",
+            }, next_prompt="\n")
+        except Exception as e:
+            return StepOutcome({"status": "error", "msg": str(e)}, next_prompt="\n")
+
+    def do_omics_spatial_lr(self, args: dict, response) -> StepOutcome:
+        path = self._resolve(args.get("input", ""))
+        if not path or not os.path.exists(path):
+            return StepOutcome({"status": "error", "msg": f"File not found: {path}"}, next_prompt="\n")
+        try:
+            from omics.spatial.analysis import run_spatial_lr
+            cluster_key = args.get("cluster_key", "leiden")
+            result = run_spatial_lr(path, cluster_key=cluster_key)
+            return StepOutcome({
+                "status": "success",
+                "n_interactions": result.get("n_interactions", 0),
+                "msg": f"Spatial LR analysis: {result.get('n_interactions', 0)} interactions",
+            }, next_prompt="\n")
+        except Exception as e:
+            return StepOutcome({"status": "error", "msg": str(e)}, next_prompt="\n")
+
+    def do_omics_spatial_svg(self, args: dict, response) -> StepOutcome:
+        path = self._resolve(args.get("input", ""))
+        if not path or not os.path.exists(path):
+            return StepOutcome({"status": "error", "msg": f"File not found: {path}"}, next_prompt="\n")
+        try:
+            from omics.spatial.analysis import detect_spatial_variable_genes
+            result = detect_spatial_variable_genes(path)
+            return StepOutcome({
+                "status": "success",
+                "n_svg": result.get("n_svg", 0),
+                "top_genes": result.get("top_genes", [])[:10],
+                "msg": f"SVG detection: {result.get('n_svg', 0)} genes",
+            }, next_prompt="\n")
+        except Exception as e:
+            return StepOutcome({"status": "error", "msg": str(e)}, next_prompt="\n")
+
+    # ── TCR/BCR Tools ──
+
+    def do_omics_tcr_load(self, args: dict, response) -> StepOutcome:
+        path = self._resolve(args.get("path", ""))
+        if not path or not os.path.exists(path):
+            return StepOutcome({"status": "error", "msg": f"File not found: {path}"}, next_prompt="\n")
+        try:
+            from omics.tcr.io import load_tcr_data
+            adata = load_tcr_data(path)
+            return StepOutcome({
+                "status": "success",
+                "n_cells": adata.n_obs,
+                "msg": f"Loaded TCR/BCR data: {adata.n_obs} cells",
+            }, next_prompt="\n")
+        except Exception as e:
+            return StepOutcome({"status": "error", "msg": str(e)}, next_prompt="\n")
+
+    def do_omics_tcr_clonotypes(self, args: dict, response) -> StepOutcome:
+        path = self._resolve(args.get("input", ""))
+        if not path or not os.path.exists(path):
+            return StepOutcome({"status": "error", "msg": f"File not found: {path}"}, next_prompt="\n")
+        try:
+            from omics.tcr.analysis import define_clonotypes
+            import anndata
+            adata = anndata.read_h5ad(path)
+            adata = define_clonotypes(adata)
+            n_clonotypes = adata.obs["clonotype_id"].nunique() if "clonotype_id" in adata.obs else 0
+            return StepOutcome({
+                "status": "success",
+                "n_clonotypes": n_clonotypes,
+                "msg": f"Clonotype analysis: {n_clonotypes} clonotypes",
+            }, next_prompt="\n")
+        except Exception as e:
+            return StepOutcome({"status": "error", "msg": str(e)}, next_prompt="\n")
+
+    def do_omics_tcr_diversity(self, args: dict, response) -> StepOutcome:
+        path = self._resolve(args.get("input", ""))
+        if not path or not os.path.exists(path):
+            return StepOutcome({"status": "error", "msg": f"File not found: {path}"}, next_prompt="\n")
+        try:
+            from omics.tcr.analysis import compute_diversity
+            import anndata
+            adata = anndata.read_h5ad(path)
+            metrics = compute_diversity(adata)
+            return StepOutcome({
+                "status": "success",
+                "diversity_metrics": metrics,
+                "msg": f"Diversity: Shannon={metrics.get('shannon', 'N/A')}",
+            }, next_prompt="\n")
+        except Exception as e:
+            return StepOutcome({"status": "error", "msg": str(e)}, next_prompt="\n")
+
+    def do_omics_tcr_vj_usage(self, args: dict, response) -> StepOutcome:
+        path = self._resolve(args.get("input", ""))
+        if not path or not os.path.exists(path):
+            return StepOutcome({"status": "error", "msg": f"File not found: {path}"}, next_prompt="\n")
+        try:
+            from omics.tcr.analysis import analyze_vj_usage
+            import anndata
+            adata = anndata.read_h5ad(path)
+            result = analyze_vj_usage(adata)
+            return StepOutcome({
+                "status": "success",
+                "v_usage": result.get("v_usage", {}),
+                "j_usage": result.get("j_usage", {}),
+                "msg": "V-J usage analysis complete",
+            }, next_prompt="\n")
+        except Exception as e:
+            return StepOutcome({"status": "error", "msg": str(e)}, next_prompt="\n")
+
+    def do_omics_tcr_overlap(self, args: dict, response) -> StepOutcome:
+        inputs = args.get("inputs", [])
+        if not inputs:
+            return StepOutcome({"status": "error", "msg": "inputs (list of .h5ad paths) is required"}, next_prompt="\n")
+        try:
+            from omics.tcr.analysis import compute_clonotype_overlap
+            import anndata
+            adatas = [anndata.read_h5ad(self._resolve(p)) for p in inputs]
+            overlap_matrix = compute_clonotype_overlap(adatas)
+            return StepOutcome({
+                "status": "success",
+                "n_samples": len(inputs),
+                "overlap_matrix": overlap_matrix.tolist() if hasattr(overlap_matrix, "tolist") else overlap_matrix,
+                "msg": f"Clonotype overlap computed for {len(inputs)} samples",
+            }, next_prompt="\n")
+        except Exception as e:
+            return StepOutcome({"status": "error", "msg": str(e)}, next_prompt="\n")
+
+    def do_omics_tcr_integrate(self, args: dict, response) -> StepOutcome:
+        tcr_path = self._resolve(args.get("tcr_input", ""))
+        scrna_path = self._resolve(args.get("scrna_input", ""))
+        if not tcr_path or not os.path.exists(tcr_path):
+            return StepOutcome({"status": "error", "msg": f"TCR file not found: {tcr_path}"}, next_prompt="\n")
+        if not scrna_path or not os.path.exists(scrna_path):
+            return StepOutcome({"status": "error", "msg": f"scRNA file not found: {scrna_path}"}, next_prompt="\n")
+        try:
+            from omics.tcr.integration import integrate_tcr_scrna
+            adata = integrate_tcr_scrna(tcr_path, scrna_path)
+            return StepOutcome({
+                "status": "success",
+                "n_cells": adata.n_obs,
+                "n_genes": adata.n_vars,
+                "msg": f"TCR-scRNA integration: {adata.n_obs} cells x {adata.n_vars} genes",
+            }, next_prompt="\n")
+        except Exception as e:
+            return StepOutcome({"status": "error", "msg": str(e)}, next_prompt="\n")
+
+    # ── Scoring Tools ──
+
+    def do_omics_score_immune(self, args: dict, response) -> StepOutcome:
+        path = self._resolve(args.get("input", ""))
+        if not path or not os.path.exists(path):
+            return StepOutcome({"status": "error", "msg": f"File not found: {path}"}, next_prompt="\n")
+        try:
+            from omics.score.scorers import ImmuneInfiltrationScore
+            import anndata
+            scorer = ImmuneInfiltrationScore()
+            adata = anndata.read_h5ad(path)
+            result = scorer.compute(adata)
+            scorer.explain(result)
+            return StepOutcome({
+                "status": "success",
+                "score": result.score,
+                "confidence": result.confidence,
+                "interpretation": result.interpretation,
+                "msg": f"Immune score: {result.score:.3f} (confidence: {result.confidence:.3f})",
+            }, next_prompt="\n")
+        except Exception as e:
+            return StepOutcome({"status": "error", "msg": str(e)}, next_prompt="\n")
+
+    def do_omics_score_pathway(self, args: dict, response) -> StepOutcome:
+        path = self._resolve(args.get("input", ""))
+        if not path or not os.path.exists(path):
+            return StepOutcome({"status": "error", "msg": f"File not found: {path}"}, next_prompt="\n")
+        try:
+            from omics.score.scorers import PathwayActivityScore
+            import anndata
+            scorer = PathwayActivityScore()
+            adata = anndata.read_h5ad(path)
+            result = scorer.compute(adata)
+            return StepOutcome({
+                "status": "success",
+                "score": result.score,
+                "confidence": result.confidence,
+                "pathway_activities": getattr(result, "pathway_activities", {}),
+                "msg": f"Pathway score: {result.score:.3f}",
+            }, next_prompt="\n")
+        except Exception as e:
+            return StepOutcome({"status": "error", "msg": str(e)}, next_prompt="\n")
+
+    def do_omics_score_clonality(self, args: dict, response) -> StepOutcome:
+        path = self._resolve(args.get("input", ""))
+        if not path or not os.path.exists(path):
+            return StepOutcome({"status": "error", "msg": f"File not found: {path}"}, next_prompt="\n")
+        try:
+            from omics.score.scorers import ClonalityScore
+            import anndata
+            scorer = ClonalityScore()
+            adata = anndata.read_h5ad(path)
+            result = scorer.compute(adata)
+            return StepOutcome({
+                "status": "success",
+                "score": result.score,
+                "confidence": result.confidence,
+                "interpretation": result.interpretation,
+                "msg": f"Clonality score: {result.score:.3f}",
+            }, next_prompt="\n")
+        except Exception as e:
+            return StepOutcome({"status": "error", "msg": str(e)}, next_prompt="\n")
+
+    def do_omics_score_spatial(self, args: dict, response) -> StepOutcome:
+        path = self._resolve(args.get("input", ""))
+        if not path or not os.path.exists(path):
+            return StepOutcome({"status": "error", "msg": f"File not found: {path}"}, next_prompt="\n")
+        try:
+            from omics.score.scorers import SpatialHeterogeneityScore
+            import anndata
+            scorer = SpatialHeterogeneityScore()
+            adata = anndata.read_h5ad(path)
+            result = scorer.compute(adata)
+            return StepOutcome({
+                "status": "success",
+                "score": result.score,
+                "confidence": result.confidence,
+                "interpretation": result.interpretation,
+                "msg": f"Spatial heterogeneity score: {result.score:.3f}",
+            }, next_prompt="\n")
+        except Exception as e:
+            return StepOutcome({"status": "error", "msg": str(e)}, next_prompt="\n")
+
+    def do_omics_score_drug(self, args: dict, response) -> StepOutcome:
+        path = self._resolve(args.get("input", ""))
+        if not path or not os.path.exists(path):
+            return StepOutcome({"status": "error", "msg": f"File not found: {path}"}, next_prompt="\n")
+        try:
+            from omics.score.scorers import DrugResponseScore
+            import anndata
+            scorer = DrugResponseScore()
+            adata = anndata.read_h5ad(path)
+            result = scorer.compute(adata)
+            return StepOutcome({
+                "status": "success",
+                "score": result.score,
+                "confidence": result.confidence,
+                "top_drugs": getattr(result, "top_drugs", []),
+                "msg": f"Drug response score: {result.score:.3f}",
+            }, next_prompt="\n")
+        except Exception as e:
+            return StepOutcome({"status": "error", "msg": str(e)}, next_prompt="\n")
+
+    def do_omics_score_integrated(self, args: dict, response) -> StepOutcome:
+        try:
+            from omics.score.scorers import IntegratedHealthScore
+            from omics.score.base import ScoreCategory, ScoreResult
+            scorer = IntegratedHealthScore()
+            raw = args.get("modality_scores", {})
+            scores = {}
+            for cat_name, val in raw.items():
+                cat = ScoreCategory(cat_name)
+                scores[cat] = ScoreResult(
+                    score=float(val.get("score", 0)),
+                    category=cat,
+                    confidence=float(val.get("confidence", 1.0)),
+                )
+            result = scorer.compute(scores)
+            return StepOutcome({
+                "status": "success",
+                "score": result.score,
+                "confidence": result.confidence,
+                "interpretation": result.interpretation,
+                "msg": f"Integrated health score: {result.score:.3f}",
+            }, next_prompt="\n")
+        except Exception as e:
+            return StepOutcome({"status": "error", "msg": str(e)}, next_prompt="\n")
+
     # ── Dispatch (GenericAgent convention) ──
 
     def dispatch(self, tool_name, args, response, index=0):

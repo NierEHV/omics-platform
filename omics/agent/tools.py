@@ -3,6 +3,8 @@
 Each tool maps to a function in omics.scrna.*, omics.data.*, omics.viz.*, etc.
 """
 
+from __future__ import annotations
+
 
 def create_omics_tools_schema() -> list[dict]:
     """Generate JSON tool schema for LLM function calling."""
@@ -245,6 +247,130 @@ def create_omics_tools_schema() -> list[dict]:
                     "value": {"type": "string", "description": "Value to set"},
                 },
             },
+        },
+        # -- Bulk RNA-seq --
+        {
+            "name": "omics_bulk_import",
+            "description": "Load bulk RNA-seq count matrix (STAR/RSEM/kallisto/HTSeq output, CSV or TSV). First column = gene IDs, remaining columns = sample counts.",
+            "parameters": {"type": "object", "properties": {"path": {"type": "string", "description": "Path to count matrix file (CSV or TSV)"}}, "required": ["path"]},
+        },
+        {
+            "name": "omics_bulk_de",
+            "description": "Differential expression analysis via DESeq2 (default). Requires design formula and contrast. Returns log2FC, p-value, adjusted p-value per gene.",
+            "parameters": {"type": "object", "properties": {"input": {"type": "string", "description": "Path to .h5ad file"}, "design": {"type": "string", "description": "R formula, e.g. '~condition'"}, "contrast": {"type": "array", "items": {"type": "string"}, "description": "[variable, numerator, denominator] e.g. ['condition','tumor','normal']"}}, "required": ["input", "design", "contrast"]},
+        },
+        {
+            "name": "omics_bulk_enrich",
+            "description": "Gene set enrichment analysis via GSEApy. Supports GO, KEGG, MSigDB, Reactome gene sets.",
+            "parameters": {"type": "object", "properties": {"de_results_path": {"type": "string", "description": "Path to DE results CSV"}, "gene_sets": {"type": "string", "enum": ["GO", "KEGG", "MSigDB"], "default": "GO"}}, "required": ["de_results_path"]},
+        },
+        {
+            "name": "omics_bulk_visualize",
+            "description": "Generate publication-ready plots from bulk RNA-seq data: volcano plot, heatmap, or PCA.",
+            "parameters": {"type": "object", "properties": {"input": {"type": "string", "description": "Path to .h5ad or DE CSV"}, "plot_type": {"type": "string", "enum": ["volcano", "heatmap", "pca"], "default": "volcano"}, "gene_list": {"type": "array", "items": {"type": "string"}, "description": "Gene names for heatmap"}, "output": {"type": "string", "description": "Output figure path (pdf/png)"}}, "required": ["input", "plot_type"]},
+        },
+        {
+            "name": "omics_bulk_pipeline",
+            "description": "One-click bulk RNA-seq workflow: load counts -> QC filter -> normalize -> DE -> enrichment -> volcano plot.",
+            "parameters": {"type": "object", "properties": {"input": {"type": "string", "description": "Path to count matrix"}, "design": {"type": "string", "description": "R formula e.g. '~condition'"}, "contrast": {"type": "array", "items": {"type": "string"}, "description": "[variable, numerator, denominator]"}, "output_dir": {"type": "string", "default": "."}}, "required": ["input", "design", "contrast"]},
+        },
+        # -- Spatial --
+        {
+            "name": "omics_spatial_import",
+            "description": "Load spatial transcriptomics data (10x Visium, MERFISH) into AnnData.",
+            "parameters": {"type": "object", "properties": {"path": {"type": "string", "description": "Path to Visium output directory or .h5ad file"}, "modality": {"type": "string", "enum": ["visium", "merfish"], "default": "visium"}}, "required": ["path"]},
+        },
+        {
+            "name": "omics_spatial_qc",
+            "description": "Quality control for spatial data: filter spots by counts, filter genes, compute QC metrics via Squidpy.",
+            "parameters": {"type": "object", "properties": {"input": {"type": "string", "description": "Path to .h5ad file"}, "min_counts": {"type": "integer", "default": 100}, "min_spots": {"type": "integer", "default": 3}, "max_pct_mt": {"type": "number", "default": 20.0}}, "required": ["input"]},
+        },
+        {
+            "name": "omics_spatial_cluster",
+            "description": "Spatial-aware clustering: spatial neighbors -> PCA -> leiden -> UMAP.",
+            "parameters": {"type": "object", "properties": {"input": {"type": "string", "description": "Path to .h5ad file"}, "resolution": {"type": "number", "default": 1.0}, "n_neighbors": {"type": "integer", "default": 15}}, "required": ["input"]},
+        },
+        {
+            "name": "omics_spatial_deconvolve",
+            "description": "Cell-type deconvolution from spatial spots using cell2location with a scRNA-seq reference.",
+            "parameters": {"type": "object", "properties": {"input": {"type": "string", "description": "Path to spatial .h5ad file"}, "reference": {"type": "string", "description": "Path to scRNA-seq reference .h5ad file"}}, "required": ["input", "reference"]},
+        },
+        {
+            "name": "omics_spatial_niche",
+            "description": "Cellular neighborhood / niche analysis via Squidpy nhood_enrichment.",
+            "parameters": {"type": "object", "properties": {"input": {"type": "string", "description": "Path to .h5ad file"}, "cluster_key": {"type": "string", "default": "leiden"}}, "required": ["input"]},
+        },
+        {
+            "name": "omics_spatial_lr",
+            "description": "Spatially-aware ligand-receptor interaction analysis via Squidpy ligrec.",
+            "parameters": {"type": "object", "properties": {"input": {"type": "string", "description": "Path to .h5ad file"}, "cluster_key": {"type": "string", "default": "leiden"}}, "required": ["input"]},
+        },
+        {
+            "name": "omics_spatial_svg",
+            "description": "Detect spatially variable genes (SVGs) using SPARK-X with Squidpy Moran's I fallback.",
+            "parameters": {"type": "object", "properties": {"input": {"type": "string", "description": "Path to .h5ad file"}}, "required": ["input"]},
+        },
+        # -- TCR/BCR --
+        {
+            "name": "omics_tcr_load",
+            "description": "Load TCR/BCR immune repertoire data (10X VDJ, MiXCR output, AIRR format, TRUST4).",
+            "parameters": {"type": "object", "properties": {"path": {"type": "string", "description": "Path to VDJ data file or directory"}}, "required": ["path"]},
+        },
+        {
+            "name": "omics_tcr_clonotypes",
+            "description": "Define clonotypes from CDR3 sequences and analyze clonal expansion.",
+            "parameters": {"type": "object", "properties": {"input": {"type": "string", "description": "Path to .h5ad file with TCR data"}}, "required": ["input"]},
+        },
+        {
+            "name": "omics_tcr_diversity",
+            "description": "Compute immune repertoire diversity metrics: Shannon, Simpson, Inverse Simpson, D50, Chao1.",
+            "parameters": {"type": "object", "properties": {"input": {"type": "string", "description": "Path to .h5ad file"}}, "required": ["input"]},
+        },
+        {
+            "name": "omics_tcr_vj_usage",
+            "description": "Analyze V and J gene segment usage frequency in TCR/BCR repertoire.",
+            "parameters": {"type": "object", "properties": {"input": {"type": "string", "description": "Path to .h5ad file"}}, "required": ["input"]},
+        },
+        {
+            "name": "omics_tcr_overlap",
+            "description": "Compute clonotype overlap (Jaccard index) between multiple samples.",
+            "parameters": {"type": "object", "properties": {"inputs": {"type": "array", "items": {"type": "string"}, "description": "List of paths to .h5ad files"}}, "required": ["inputs"]},
+        },
+        {
+            "name": "omics_tcr_integrate",
+            "description": "Merge TCR clonotype information into scRNA-seq AnnData, linking immune repertoire to transcriptome.",
+            "parameters": {"type": "object", "properties": {"tcr_input": {"type": "string", "description": "Path to TCR .h5ad"}, "scrna_input": {"type": "string", "description": "Path to scRNA-seq .h5ad"}}, "required": ["tcr_input", "scrna_input"]},
+        },
+        # -- Scoring --
+        {
+            "name": "omics_score_immune",
+            "description": "Compute immune infiltration score from scRNA-seq data using canonical marker genes for 10 immune cell types.",
+            "parameters": {"type": "object", "properties": {"input": {"type": "string", "description": "Path to .h5ad file"}}, "required": ["input"]},
+        },
+        {
+            "name": "omics_score_pathway",
+            "description": "Compute pathway activity score across 14 cancer-relevant pathways (PROGENy gene sets).",
+            "parameters": {"type": "object", "properties": {"input": {"type": "string", "description": "Path to .h5ad file"}}, "required": ["input"]},
+        },
+        {
+            "name": "omics_score_clonality",
+            "description": "Compute clonal expansion score from TCR/BCR repertoire diversity and expansion metrics.",
+            "parameters": {"type": "object", "properties": {"input": {"type": "string", "description": "Path to .h5ad file with TCR data"}}, "required": ["input"]},
+        },
+        {
+            "name": "omics_score_spatial",
+            "description": "Compute spatial niche heterogeneity score from spatial transcriptomics data.",
+            "parameters": {"type": "object", "properties": {"input": {"type": "string", "description": "Path to .h5ad file"}}, "required": ["input"]},
+        },
+        {
+            "name": "omics_score_drug",
+            "description": "Predict drug response score from multi-omics features. (Placeholder for GDSC/DepMap-trained model integration.)",
+            "parameters": {"type": "object", "properties": {"input": {"type": "string", "description": "Path to .h5ad file"}}, "required": ["input"]},
+        },
+        {
+            "name": "omics_score_integrated",
+            "description": "Compute AI-weighted composite multi-omics health score by fusing all per-modality scores into a unified biological narrative.",
+            "parameters": {"type": "object", "properties": {"modality_scores": {"type": "object", "description": "JSON object mapping modality names to score values"}}, "required": ["modality_scores"]},
         },
     ]
     return tools
