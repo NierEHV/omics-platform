@@ -1,10 +1,14 @@
 """Concrete bulk RNA-seq analysis backed by pandas + rpy2 DESeq2 + GSEApy."""
 from __future__ import annotations
 from typing import Any, Optional
+import logging
+import re
 import numpy as np
 import pandas as pd
 import anndata
 from .base import AbstractBulkRNAAnalysis
+
+logger = logging.getLogger(__name__)
 
 
 class BulkRNAAnalysis(AbstractBulkRNAAnalysis):
@@ -14,7 +18,7 @@ class BulkRNAAnalysis(AbstractBulkRNAAnalysis):
         sep = kwargs.pop('sep', '\t' if str(path).endswith('.tsv') else ',')
         raw = pd.read_csv(path, sep=sep, **kwargs)
         gene_ids = raw.iloc[:, 0].astype(str).values
-        sample_ids = raw.columns[1:].tolist()
+        sample_ids = [re.sub(r'[^a-zA-Z0-9_.-]', '_', str(c)) for c in raw.columns[1:].tolist()]
         counts = raw.iloc[:, 1:].values.astype(np.float64)
         adata = anndata.AnnData(
             X=counts.T,
@@ -34,6 +38,8 @@ class BulkRNAAnalysis(AbstractBulkRNAAnalysis):
     def normalize(self, adata: anndata.AnnData, method: str = "deseq2",
                   **kwargs) -> anndata.AnnData:
         """DESeq2 median-of-ratios normalization via rpy2. Falls back to CPM."""
+        if method not in ("deseq2", "cpm"):
+            raise ValueError(f"Unknown normalization method: {method}. Supported: deseq2, cpm")
         if method == "deseq2":
             try:
                 from rpy2.robjects import pandas2ri, r
@@ -53,8 +59,8 @@ class BulkRNAAnalysis(AbstractBulkRNAAnalysis):
                 adata.layers['normalized'] = adata.X / sf[:, None]
                 adata.uns['normalization'] = 'deseq2_mr'
                 return adata
-            except Exception:
-                pass
+            except (ImportError, ModuleNotFoundError, Exception) as exc:
+                logger.warning("DESeq2 normalization failed, falling back to CPM: %s", exc)
         # Fallback: simple library-size normalization (CPM)
         lib_sizes = np.array(adata.X.sum(axis=1)).flatten()
         adata.layers['cpm'] = (adata.X / lib_sizes[:, None]) * 1e6
@@ -71,14 +77,23 @@ class BulkRNAAnalysis(AbstractBulkRNAAnalysis):
         counts_df = pd.DataFrame(
             adata.X.T.astype(int), index=adata.var_names, columns=adata.obs_names
         )
+        if contrast[0] not in adata.obs.columns:
+            raise ValueError(f"Contrast column '{contrast[0]}' not found in obs. Available columns: {list(adata.obs.columns)}")
+        if not re.match(r'^~\s*\w+(\s*[+*]\s*\w+)*$', design):
+            raise ValueError(f"Invalid design formula: {design}. Use format: ~condition")
+        for i, val in enumerate(contrast):
+            if not re.match(r'^[a-zA-Z0-9_.-]+$', str(val)):
+                raise ValueError(f"Invalid contrast value: {val}")
+            r.assign(f'contrast_val{i+1}', str(val))
         condition = np.array(adata.obs[contrast[0]].values)
         r_counts = pandas2ri.py2rpy(counts_df)
         r.assign('counts_r', r_counts)
         r.assign('condition_r', condition)
-        r(f'dds <- DESeqDataSetFromMatrix(countData=counts_r, '
-          f'colData=data.frame(condition=condition_r), design={design})')
+        r.assign('design_formula', design)
+        r('dds <- DESeqDataSetFromMatrix(countData=counts_r, '
+          'colData=data.frame(condition=condition_r), design=design_formula)')
         r('dds <- DESeq(dds)')
-        r(f'res <- results(dds, contrast=c("{contrast[0]}","{contrast[1]}","{contrast[2]}"))')
+        r('res <- results(dds, contrast=c(contrast_val1, contrast_val2, contrast_val3))')
         res_df = pandas2ri.rpy2py(r('as.data.frame(res)'))
         return res_df.rename(columns={
             'log2FoldChange': 'log2FC', 'pvalue': 'pvalue', 'padj': 'padj'
@@ -89,9 +104,11 @@ class BulkRNAAnalysis(AbstractBulkRNAAnalysis):
         """GSEApy enrichment analysis. gene_sets: GO/KEGG/MSigDB."""
         import gseapy as gp
         de_results = de_results.dropna(subset=['pvalue'])
+        if 'log2FC' not in de_results.columns:
+            raise ValueError("DE results must contain a 'log2FC' column for enrichment ranking")
         de_results = de_results.copy()
         de_results['rank'] = -np.log10(de_results['pvalue'].values) * np.sign(
-            de_results.get('log2FC', pd.Series([0] * len(de_results))).values
+            de_results['log2FC'].values
         )
         ranked = de_results['rank'].sort_values(ascending=False)
         if gene_sets == "GO":
