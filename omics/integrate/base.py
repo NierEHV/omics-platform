@@ -1,7 +1,7 @@
 """Extension point for multi-omics integration."""
 
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, List
 
 
 class AbstractIntegration(ABC):
@@ -13,7 +13,7 @@ class AbstractIntegration(ABC):
     modality: str = "integration"
 
     @abstractmethod
-    def integrate(self, modalities: list[Any], **kwargs) -> Any:
+    def integrate(self, modalities: List[Any], **kwargs) -> Any:
         """Integrate multiple modalities into a joint representation.
 
         Args:
