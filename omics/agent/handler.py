@@ -700,14 +700,13 @@ class OmicsAgentHandler(BaseHandler):
         if not path or not os.path.exists(path):
             return StepOutcome({"status": "error", "msg": f"File not found: {path}"}, next_prompt="\n")
         try:
-            from omics.tcr.analysis import analyze_vj_usage
+            from omics.tcr.analysis import TCRAnalysis
             import anndata
             adata = anndata.read_h5ad(path)
-            result = analyze_vj_usage(adata)
+            result = TCRAnalysis().vj_usage(adata)
             return StepOutcome({
                 "status": "success",
-                "v_usage": result.get("v_usage", {}),
-                "j_usage": result.get("j_usage", {}),
+                "v_usage": result.to_dict() if hasattr(result, "to_dict") else str(result),
                 "msg": "V-J usage analysis complete",
             }, next_prompt="\n")
         except Exception as e:
@@ -718,10 +717,10 @@ class OmicsAgentHandler(BaseHandler):
         if not inputs:
             return StepOutcome({"status": "error", "msg": "inputs (list of .h5ad paths) is required"}, next_prompt="\n")
         try:
-            from omics.tcr.analysis import compute_clonotype_overlap
+            from omics.tcr.analysis import TCRAnalysis
             import anndata
             adatas = [anndata.read_h5ad(self._resolve(p)) for p in inputs]
-            overlap_matrix = compute_clonotype_overlap(adatas)
+            overlap_matrix = TCRAnalysis().clonotype_overlap(adatas)
             return StepOutcome({
                 "status": "success",
                 "n_samples": len(inputs),
@@ -739,8 +738,11 @@ class OmicsAgentHandler(BaseHandler):
         if not scrna_path or not os.path.exists(scrna_path):
             return StepOutcome({"status": "error", "msg": f"scRNA file not found: {scrna_path}"}, next_prompt="\n")
         try:
-            from omics.tcr.integration import integrate_tcr_scrna
-            adata = integrate_tcr_scrna(tcr_path, scrna_path)
+            from omics.tcr.analysis import TCRAnalysis
+            import anndata
+            tcr_adata = anndata.read_h5ad(tcr_path)
+            scrna_adata = anndata.read_h5ad(scrna_path)
+            adata = TCRAnalysis().integrate_with_scrna(tcr_adata, scrna_adata)
             return StepOutcome({
                 "status": "success",
                 "n_cells": adata.n_obs,
@@ -798,9 +800,9 @@ class OmicsAgentHandler(BaseHandler):
         if not path or not os.path.exists(path):
             return StepOutcome({"status": "error", "msg": f"File not found: {path}"}, next_prompt="\n")
         try:
-            from omics.score.scorers import ClonalityScore
+            from omics.score.scorers import ClonalExpansionScore
             import anndata
-            scorer = ClonalityScore()
+            scorer = ClonalExpansionScore()
             adata = anndata.read_h5ad(path)
             result = scorer.compute(adata)
             return StepOutcome({
@@ -818,9 +820,9 @@ class OmicsAgentHandler(BaseHandler):
         if not path or not os.path.exists(path):
             return StepOutcome({"status": "error", "msg": f"File not found: {path}"}, next_prompt="\n")
         try:
-            from omics.score.scorers import SpatialHeterogeneityScore
+            from omics.score.scorers import SpatialNicheScore
             import anndata
-            scorer = SpatialHeterogeneityScore()
+            scorer = SpatialNicheScore()
             adata = anndata.read_h5ad(path)
             result = scorer.compute(adata)
             return StepOutcome({
@@ -838,17 +840,9 @@ class OmicsAgentHandler(BaseHandler):
         if not path or not os.path.exists(path):
             return StepOutcome({"status": "error", "msg": f"File not found: {path}"}, next_prompt="\n")
         try:
-            from omics.score.scorers import DrugResponseScore
-            import anndata
-            scorer = DrugResponseScore()
-            adata = anndata.read_h5ad(path)
-            result = scorer.compute(adata)
             return StepOutcome({
-                "status": "success",
-                "score": result.score,
-                "confidence": result.confidence,
-                "top_drugs": getattr(result, "top_drugs", []),
-                "msg": f"Drug response score: {result.score:.3f}",
+                "status": "error",
+                "msg": "DrugResponseScore is not yet implemented. Requires GDSC/DepMap model integration (planned for future phase).",
             }, next_prompt="\n")
         except Exception as e:
             return StepOutcome({"status": "error", "msg": str(e)}, next_prompt="\n")
