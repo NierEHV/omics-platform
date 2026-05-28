@@ -1,0 +1,11 @@
+# Omics Copilot — Backend
+# Requires Python >=3.10 (omics-platform SDK is not compatible with Python 3.8)
+
+fastapi>=0.115
+uvicorn[standard]>=0.32
+python-multipart>=0.0.18
+openai>=1.0
+
+# omics-platform must be installed from the parent directory:
+#   pip install -e C:\Users\NIERGAM\Desktop\omics-platform
+# It is not listed as a pip dependency because it's a local editable install.

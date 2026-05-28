@@ -1,0 +1,33 @@
+{
+  "modality": "amplicon",
+  "name": "扩增子 (16S rRNA) 分析流程",
+  "nodes": [
+    {"id": "import", "label": "数据导入", "type": "import", "params": [{"key": "file", "label": "OTU/ASV表", "type": "file_select", "required": true}]},
+    {"id": "qc", "label": "QC 质控", "type": "analysis", "depends_on": ["import"], "params": [
+      {"key": "min_freq", "label": "最低丰度", "type": "integer", "default": 10},
+      {"key": "min_samples", "label": "最少样本", "type": "integer", "default": 2}
+    ]},
+    {"id": "alpha_div", "label": "Alpha多样性", "type": "analysis", "depends_on": ["qc"], "params": [
+      {"key": "metrics", "label": "指标", "type": "select", "options": ["shannon", "simpson", "chao1", "observed", "all"], "default": "all"}
+    ]},
+    {"id": "beta_div", "label": "Beta多样性", "type": "analysis", "depends_on": ["qc"], "params": [
+      {"key": "method", "label": "距离方法", "type": "select", "options": ["bray_curtis", "jaccard", "unifrac", "wunifrac"], "default": "bray_curtis"}
+    ]},
+    {"id": "taxonomy", "label": "物种注释", "type": "analysis", "depends_on": ["qc"], "params": [
+      {"key": "database", "label": "数据库", "type": "select", "options": ["silva", "greengenes", "rdp", "unite"], "default": "silva"},
+      {"key": "level", "label": "分类水平", "type": "select", "options": ["phylum", "class", "order", "family", "genus", "species"], "default": "genus"}
+    ]},
+    {"id": "diff_abundance", "label": "差异丰度", "type": "analysis", "depends_on": ["taxonomy"], "params": [
+      {"key": "method", "label": "方法", "type": "select", "options": ["aldex2", "ancom", "deseq2", "lefse"], "default": "aldex2"}
+    ]},
+    {"id": "visualize", "label": "可视化", "type": "branch_optional", "depends_on": ["beta_div", "taxonomy"], "params": [
+      {"key": "type", "label": "图表类型", "type": "select", "options": ["pcoa", "nmds", "barplot", "heatmap", "phylogenetic_tree"], "default": "pcoa"}
+    ]}
+  ],
+  "edges": [
+    {"source": "import", "target": "qc"},
+    {"source": "qc", "target": "alpha_div"}, {"source": "qc", "target": "beta_div"}, {"source": "qc", "target": "taxonomy"},
+    {"source": "taxonomy", "target": "diff_abundance"},
+    {"source": "beta_div", "target": "visualize"}, {"source": "taxonomy", "target": "visualize"}
+  ]
+}

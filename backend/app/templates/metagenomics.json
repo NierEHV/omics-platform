@@ -1,0 +1,35 @@
+{
+  "modality": "metagenomics",
+  "name": "宏基因组分析流程",
+  "nodes": [
+    {"id": "import", "label": "数据导入", "type": "import", "params": [{"key": "file", "label": "Kraken2/Bracken报告", "type": "file_select", "required": true}]},
+    {"id": "qc", "label": "QC 质控", "type": "analysis", "depends_on": ["import"], "params": [
+      {"key": "min_reads", "label": "最低reads", "type": "integer", "default": 1000},
+      {"key": "host_filter", "label": "宿主过滤", "type": "select", "options": ["human", "mouse", "none"], "default": "human"}
+    ]},
+    {"id": "taxonomic_profile", "label": "物种组成", "type": "analysis", "depends_on": ["qc"], "params": [
+      {"key": "level", "label": "分类水平", "type": "select", "options": ["phylum", "class", "order", "family", "genus", "species"], "default": "species"}
+    ]},
+    {"id": "functional_annot", "label": "功能注释", "type": "analysis", "depends_on": ["qc"], "params": [
+      {"key": "database", "label": "数据库", "type": "select", "options": ["kegg", "eggnog", "cog", "cazy", "vfdb", "card"], "default": "kegg"}
+    ]},
+    {"id": "alpha_div", "label": "Alpha多样性", "type": "analysis", "depends_on": ["taxonomic_profile"], "params": [
+      {"key": "metrics", "label": "指标", "type": "select", "options": ["shannon", "simpson", "chao1", "all"], "default": "all"}
+    ]},
+    {"id": "beta_div", "label": "Beta多样性", "type": "analysis", "depends_on": ["taxonomic_profile"], "params": [
+      {"key": "method", "label": "距离方法", "type": "select", "options": ["bray_curtis", "jaccard", "aitchison"], "default": "bray_curtis"}
+    ]},
+    {"id": "diff_abundance", "label": "差异丰度", "type": "analysis", "depends_on": ["taxonomic_profile"], "params": [
+      {"key": "method", "label": "方法", "type": "select", "options": ["aldex2", "ancom_bc", "maaslin2"], "default": "aldex2"}
+    ]},
+    {"id": "visualize", "label": "可视化", "type": "branch_optional", "depends_on": ["beta_div", "functional_annot"], "params": [
+      {"key": "type", "label": "图表类型", "type": "select", "options": ["pcoa", "heatmap", "sankey", "krona", "circos"], "default": "pcoa"}
+    ]}
+  ],
+  "edges": [
+    {"source": "import", "target": "qc"},
+    {"source": "qc", "target": "taxonomic_profile"}, {"source": "qc", "target": "functional_annot"},
+    {"source": "taxonomic_profile", "target": "alpha_div"}, {"source": "taxonomic_profile", "target": "beta_div"}, {"source": "taxonomic_profile", "target": "diff_abundance"},
+    {"source": "beta_div", "target": "visualize"}, {"source": "functional_annot", "target": "visualize"}
+  ]
+}

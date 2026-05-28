@@ -1,0 +1,35 @@
+{
+  "modality": "proteomics",
+  "name": "蛋白质组学分析流程",
+  "nodes": [
+    {"id": "import", "label": "数据导入", "type": "import", "params": [{"key": "file", "label": "蛋白表达矩阵", "type": "file_select", "required": true}]},
+    {"id": "qc", "label": "QC 质控", "type": "analysis", "depends_on": ["import"], "params": [
+      {"key": "min_valid", "label": "最低有效值比例", "type": "number", "default": 0.5},
+      {"key": "impute_method", "label": "缺失值填充", "type": "select", "options": ["min", "knn", "missforest", "none"], "default": "knn"}
+    ]},
+    {"id": "normalize", "label": "标准化", "type": "analysis", "depends_on": ["qc"], "params": [
+      {"key": "method", "label": "方法", "type": "select", "options": ["quantile", "median", "vsn", "loess", "total"], "default": "quantile"}
+    ]},
+    {"id": "de", "label": "差异蛋白", "type": "analysis", "depends_on": ["normalize"], "params": [
+      {"key": "method", "label": "方法", "type": "select", "options": ["limma", "ttest", "sam", "deseq2"], "default": "limma"},
+      {"key": "p_cutoff", "label": "p值阈值", "type": "number", "default": 0.05},
+      {"key": "fc_cutoff", "label": "fold change阈值", "type": "number", "default": 1.5}
+    ]},
+    {"id": "enrich", "label": "富集分析", "type": "analysis", "depends_on": ["de"], "params": [
+      {"key": "database", "label": "数据库", "type": "select", "options": ["GO", "KEGG", "Reactome", "WikiPathways", "STRING"], "default": "KEGG"}
+    ]},
+    {"id": "ppi", "label": "蛋白互作网络", "type": "branch_optional", "depends_on": ["de"], "params": [
+      {"key": "database", "label": "数据库", "type": "select", "options": ["string", "biogrid", "intact"], "default": "string"},
+      {"key": "confidence", "label": "置信度", "type": "number", "default": 0.7, "min": 0.1, "max": 1.0, "step": 0.1}
+    ]},
+    {"id": "visualize", "label": "可视化", "type": "branch_optional", "depends_on": ["de", "enrich"], "params": [
+      {"key": "type", "label": "图表类型", "type": "select", "options": ["volcano", "heatmap", "network", "bubble"], "default": "volcano"}
+    ]}
+  ],
+  "edges": [
+    {"source": "import", "target": "qc"}, {"source": "qc", "target": "normalize"},
+    {"source": "normalize", "target": "de"}, {"source": "de", "target": "enrich"},
+    {"source": "de", "target": "ppi"}, {"source": "de", "target": "visualize"},
+    {"source": "enrich", "target": "visualize"}
+  ]
+}

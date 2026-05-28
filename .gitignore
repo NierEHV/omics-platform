@@ -41,3 +41,11 @@ htmlcov/
 
 # Logs
 *.log
+
+# LLM settings (contains API keys)
+llm_settings.json
+node_modules/
+dist/
+omics_copilot.db
+uploads/
+*.h5ad

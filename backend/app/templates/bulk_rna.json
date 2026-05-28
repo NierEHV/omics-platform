@@ -1,0 +1,34 @@
+{
+  "modality": "bulk_rna",
+  "name": "Bulk RNA-seq 标准流程",
+  "nodes": [
+    {"id": "import", "label": "数据导入", "type": "import", "params": [{"key": "file", "label": "表达矩阵", "type": "file_select", "required": true}]},
+    {"id": "qc", "label": "QC 质控", "type": "analysis", "tool": "omics_bulk_de", "depends_on": ["import"], "params": [
+      {"key": "min_counts", "label": "最低counts", "type": "integer", "default": 10},
+      {"key": "min_samples", "label": "最少样本数", "type": "integer", "default": 3}
+    ]},
+    {"id": "normalize", "label": "标准化", "type": "analysis", "depends_on": ["qc"], "params": [
+      {"key": "method", "label": "方法", "type": "select", "options": ["tpm", "fpkm", "deseq2", "voom"], "default": "deseq2"}
+    ]},
+    {"id": "de", "label": "差异表达", "type": "analysis", "tool": "omics_bulk_de", "depends_on": ["normalize"], "params": [
+      {"key": "group_col", "label": "分组列", "type": "string", "default": "condition"},
+      {"key": "case", "label": "实验组", "type": "string", "default": "treatment"},
+      {"key": "control", "label": "对照组", "type": "string", "default": "control"}
+    ]},
+    {"id": "enrich", "label": "富集分析", "type": "analysis", "tool": "omics_bulk_enrich", "depends_on": ["de"], "params": [
+      {"key": "gene_col", "label": "基因列", "type": "string", "default": "gene_id"},
+      {"key": "pvalue_col", "label": "p值列", "type": "string", "default": "padj"},
+      {"key": "database", "label": "数据库", "type": "select", "options": ["GO", "KEGG", "Reactome", "Hallmark"], "default": "KEGG"}
+    ]},
+    {"id": "visualize", "label": "可视化", "type": "branch_optional", "tool": "omics_visualize_umap", "depends_on": ["de"], "params": [
+      {"key": "type", "label": "图表类型", "type": "select", "options": ["volcano", "heatmap", "ma_plot", "pca"], "default": "volcano"}
+    ]}
+  ],
+  "edges": [
+    {"source": "import", "target": "qc"},
+    {"source": "qc", "target": "normalize"},
+    {"source": "normalize", "target": "de"},
+    {"source": "de", "target": "enrich"},
+    {"source": "de", "target": "visualize"}
+  ]
+}

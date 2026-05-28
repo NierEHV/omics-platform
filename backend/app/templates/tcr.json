@@ -1,0 +1,32 @@
+{
+  "modality": "tcr",
+  "name": "TCR 免疫组库分析流程",
+  "nodes": [
+    {"id": "import", "label": "数据导入", "type": "import", "params": [{"key": "file", "label": "TCR-seq数据", "type": "file_select", "required": true}]},
+    {"id": "qc", "label": "QC 质控", "type": "analysis", "depends_on": ["import"], "params": [
+      {"key": "min_reads", "label": "最低reads数", "type": "integer", "default": 1000},
+      {"key": "min_umi", "label": "最低UMI", "type": "integer", "default": 3}
+    ]},
+    {"id": "clonotypes", "label": "克隆型鉴定", "type": "analysis", "depends_on": ["qc"], "params": [
+      {"key": "method", "label": "方法", "type": "select", "options": ["mixacr", "trust4", "trax"], "default": "mixa_cr"}
+    ]},
+    {"id": "diversity", "label": "多样性分析", "type": "analysis", "depends_on": ["clonotypes"], "params": [
+      {"key": "metrics", "label": "指标", "type": "select", "options": ["shannon", "simpson", "inv_simpson", "chao1", "all"], "default": "all"}
+    ]},
+    {"id": "vj_usage", "label": "VJ 使用偏好", "type": "analysis", "depends_on": ["clonotypes"], "params": [
+      {"key": "chain", "label": "链", "type": "select", "options": ["TRA", "TRB", "both"], "default": "both"}
+    ]},
+    {"id": "clonotype_tracking", "label": "克隆追踪", "type": "branch_optional", "depends_on": ["clonotypes"], "params": [
+      {"key": "method", "label": "方法", "type": "select", "options": ["tracking", "overlap", "venn"], "default": "tracking"}
+    ]},
+    {"id": "visualize", "label": "可视化", "type": "branch_optional", "depends_on": ["diversity", "vj_usage"], "params": [
+      {"key": "type", "label": "图表类型", "type": "select", "options": ["circos", "barplot", "scatter", "umap"], "default": "circos"}
+    ]}
+  ],
+  "edges": [
+    {"source": "import", "target": "qc"}, {"source": "qc", "target": "clonotypes"},
+    {"source": "clonotypes", "target": "diversity"}, {"source": "clonotypes", "target": "vj_usage"},
+    {"source": "clonotypes", "target": "clonotype_tracking"},
+    {"source": "diversity", "target": "visualize"}, {"source": "vj_usage", "target": "visualize"}
+  ]
+}

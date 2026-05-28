@@ -1,0 +1,110 @@
+{
+  "modality": "scrna",
+  "name": "单细胞转录组标准流程",
+  "nodes": [
+    {
+      "id": "import",
+      "label": "数据导入",
+      "type": "import",
+      "params": [
+        {"key": "file", "label": "数据文件", "type": "file_select", "required": true}
+      ]
+    },
+    {
+      "id": "qc",
+      "label": "QC 质控",
+      "type": "analysis",
+      "tool": "omics_scrna_qc",
+      "depends_on": ["import"],
+      "params": [
+        {"key": "min_genes", "label": "最低基因数", "type": "integer", "default": 200},
+        {"key": "min_cells", "label": "最低细胞数", "type": "integer", "default": 3},
+        {"key": "max_pct_mt", "label": "线粒体上限%", "type": "number", "default": 20.0}
+      ]
+    },
+    {
+      "id": "normalize",
+      "label": "标准化",
+      "type": "analysis",
+      "tool": "omics_scrna_normalize",
+      "depends_on": ["qc"],
+      "params": [
+        {"key": "target_sum", "label": "标准化目标值", "type": "integer", "default": 10000}
+      ]
+    },
+    {
+      "id": "reduce",
+      "label": "降维",
+      "type": "analysis",
+      "tool": "omics_scrna_reduce",
+      "depends_on": ["normalize"],
+      "params": [
+        {"key": "n_hvg", "label": "高变基因数", "type": "integer", "default": 2000},
+        {"key": "n_pcs", "label": "主成分数", "type": "integer", "default": 50},
+        {"key": "n_neighbors", "label": "邻居数", "type": "integer", "default": 15}
+      ]
+    },
+    {
+      "id": "cluster",
+      "label": "聚类",
+      "type": "analysis",
+      "tool": "omics_scrna_cluster",
+      "depends_on": ["reduce"],
+      "params": [
+        {"key": "resolution", "label": "分辨率", "type": "number", "default": 1.0, "min": 0.1, "max": 3.0, "step": 0.1}
+      ]
+    },
+    {
+      "id": "markers",
+      "label": "标记基因",
+      "type": "analysis",
+      "tool": "omics_scrna_markers",
+      "depends_on": ["cluster"],
+      "params": [
+        {"key": "groupby", "label": "分组列", "type": "string", "default": "leiden"},
+        {"key": "n_genes", "label": "Top N 基因", "type": "integer", "default": 20}
+      ]
+    },
+    {
+      "id": "trajectory",
+      "label": "拟时序",
+      "type": "branch_optional",
+      "tool": "omics_scrna_trajectory",
+      "depends_on": ["reduce"],
+      "params": [
+        {"key": "method", "label": "方法", "type": "select", "options": ["dpt", "velocity", "paga"], "default": "dpt"}
+      ]
+    },
+    {
+      "id": "annotate",
+      "label": "细胞注释",
+      "type": "branch_optional",
+      "tool": "omics_scrna_annotate",
+      "depends_on": ["markers"],
+      "params": [
+        {"key": "method", "label": "方法", "type": "select", "options": ["marker_based", "celltypist"], "default": "marker_based"}
+      ]
+    },
+    {
+      "id": "visualize",
+      "label": "可视化",
+      "type": "branch_optional",
+      "tool": "omics_visualize_umap",
+      "depends_on": ["cluster", "trajectory"],
+      "params": [
+        {"key": "color", "label": "着色列", "type": "string", "default": "leiden"}
+      ]
+    }
+  ],
+  "edges": [
+    {"source": "import", "target": "qc"},
+    {"source": "qc", "target": "normalize"},
+    {"source": "normalize", "target": "reduce"},
+    {"source": "reduce", "target": "cluster"},
+    {"source": "reduce", "target": "trajectory"},
+    {"source": "cluster", "target": "markers"},
+    {"source": "markers", "target": "annotate"},
+    {"source": "cluster", "target": "visualize"},
+    {"source": "trajectory", "target": "visualize"}
+  ]
+}
