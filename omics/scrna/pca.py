@@ -15,7 +15,8 @@ def run_pca(adata: anndata.AnnData, n_comps: int = 50, svd_solver: str = "arpack
         adata: AnnData with log-normalized expression.
         n_comps: Number of principal components.
         svd_solver: SVD solver ('arpack', 'randomized', 'auto').
-        use_highly_variable: Only use HVGs for PCA.
+        use_highly_variable: Only use HVGs for PCA. Falls back to all genes
+            if 'highly_variable' column is not in adata.var.
         use_gpu: Attempt GPU-accelerated PCA via cuML.
 
     Returns:
@@ -27,8 +28,13 @@ def run_pca(adata: anndata.AnnData, n_comps: int = 50, svd_solver: str = "arpack
         except Exception as e:
             logger.warning(f"GPU PCA failed ({e}), falling back to CPU")
 
-    sc.pp.pca(adata, n_comps=n_comps, svd_solver=svd_solver,
-              mask_var="highly_variable" if use_highly_variable else None)
+    mask = None
+    if use_highly_variable:
+        hv = adata.var.get("highly_variable")
+        if hv is not None and hv.sum() > 0:
+            mask = "highly_variable"
+
+    sc.pp.pca(adata, n_comps=n_comps, svd_solver=svd_solver, mask_var=mask)
     return adata
 
 

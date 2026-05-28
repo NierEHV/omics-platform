@@ -155,9 +155,14 @@ class OmicsAgentHandler(BaseHandler):
             from omics.utils.io import read_h5ad, write_h5ad
             adata = read_h5ad(Path(path))
             adata = run_normalize(adata, target_sum=args.get("target_sum", 10000))
-            if output:
-                write_h5ad(adata, Path(output))
-            return StepOutcome({"status": "success", "msg": f"Normalized: {adata.n_obs} cells"}, next_prompt="\n")
+            if not output:
+                output = path
+            write_h5ad(adata, Path(output))
+            return StepOutcome({
+                "status": "success",
+                "output": str(output),
+                "msg": f"Normalized: {adata.n_obs} cells -> {output}",
+            }, next_prompt="\n")
         except Exception as e:
             return StepOutcome({"status": "error", "msg": str(e)}, next_prompt="\n")
 
@@ -165,19 +170,34 @@ class OmicsAgentHandler(BaseHandler):
         path = self._resolve(args.get("input", ""))
         output = self._resolve(args.get("output", ""))
         try:
+            from omics.scrna.normalize import run_normalize
+            from omics.scrna.hvg import run_hvg
             from omics.scrna.pca import run_pca
             from omics.scrna.neighbors import run_neighbors
             from omics.scrna.umap import run_umap
             from omics.utils.io import read_h5ad, write_h5ad
             adata = read_h5ad(Path(path))
-            adata = run_pca(adata, n_comps=args.get("n_pcs", 50))
+            if "log1p" not in adata.layers:
+                adata = run_normalize(adata, target_sum=10000)
+            adata = run_hvg(adata, n_top_genes=args.get("n_hvg", 2000))
+            adata = run_pca(adata, n_comps=args.get("n_pcs", 50),
+                            use_highly_variable=True)
             adata = run_neighbors(adata, n_neighbors=args.get("n_neighbors", 15))
             adata = run_umap(adata)
+            if not output:
+                output = path
             if output:
                 write_h5ad(adata, Path(output))
-            return StepOutcome({"status": "success", "msg": f"PCA+UMAP complete: {adata.n_obs} cells"}, next_prompt="\n")
+            return StepOutcome({
+                "status": "success",
+                "output": str(output),
+                "n_hvg": int(adata.var["highly_variable"].sum()),
+                "n_pcs": adata.obsm["X_pca"].shape[1],
+                "msg": f"Normalize+HVG+PCA+neighbors+UMAP complete: {adata.n_obs} cells -> {output}",
+            }, next_prompt="\n")
         except Exception as e:
-            return StepOutcome({"status": "error", "msg": str(e)}, next_prompt="\n")
+            import traceback
+            return StepOutcome({"status": "error", "msg": f"{e}\n{traceback.format_exc()}"}, next_prompt="\n")
 
     def do_omics_scrna_cluster(self, args: dict, response) -> StepOutcome:
         path = self._resolve(args.get("input", ""))
@@ -187,36 +207,74 @@ class OmicsAgentHandler(BaseHandler):
             from omics.scrna.cluster import run_leiden
             from omics.utils.io import read_h5ad, write_h5ad
             adata = read_h5ad(Path(path))
+            if "X_pca" not in adata.obsm:
+                from omics.scrna.normalize import run_normalize
+                from omics.scrna.hvg import run_hvg
+                from omics.scrna.pca import run_pca
+                from omics.scrna.neighbors import run_neighbors
+                if "log1p" not in adata.layers:
+                    adata = run_normalize(adata, target_sum=10000)
+                if "highly_variable" not in adata.var:
+                    adata = run_hvg(adata, n_top_genes=2000)
+                adata = run_pca(adata, n_comps=50, use_highly_variable=True)
+                adata = run_neighbors(adata, n_neighbors=15)
+            elif "connectivities" not in adata.obsp:
+                from omics.scrna.neighbors import run_neighbors
+                adata = run_neighbors(adata)
             adata = run_leiden(adata, resolution=resolution)
             n = adata.obs["leiden"].nunique()
-            if output:
-                write_h5ad(adata, Path(output))
+            if not output:
+                output = path  # write back to input so downstream tools find leiden column
+            write_h5ad(adata, Path(output))
             return StepOutcome({
                 "status": "success",
+                "output": str(output),
                 "n_clusters": n,
-                "msg": f"Clustering: {n} clusters at resolution={resolution}",
+                "msg": f"Clustering: {n} clusters at resolution={resolution} -> {output}",
             }, next_prompt="\n")
         except Exception as e:
-            return StepOutcome({"status": "error", "msg": str(e)}, next_prompt="\n")
+            import traceback
+            return StepOutcome({"status": "error", "msg": f"{e}\n{traceback.format_exc()}"}, next_prompt="\n")
 
     def do_omics_scrna_markers(self, args: dict, response) -> StepOutcome:
         path = self._resolve(args.get("input", ""))
+        output = self._resolve(args.get("output", ""))
         group_by = args.get("group_by", "leiden")
         n_genes = args.get("n_genes", 100)
         try:
             from omics.scrna.markers import run_markers, get_marker_table
-            from omics.utils.io import read_h5ad
+            from omics.utils.io import read_h5ad, write_h5ad
             adata = read_h5ad(Path(path))
+            if group_by not in adata.obs.columns:
+                from omics.scrna.normalize import run_normalize
+                from omics.scrna.hvg import run_hvg
+                from omics.scrna.pca import run_pca
+                from omics.scrna.neighbors import run_neighbors
+                from omics.scrna.cluster import run_leiden
+                if "log1p" not in adata.layers:
+                    adata = run_normalize(adata, target_sum=10000)
+                if "highly_variable" not in adata.var:
+                    adata = run_hvg(adata, n_top_genes=2000)
+                if "X_pca" not in adata.obsm:
+                    adata = run_pca(adata, n_comps=50, use_highly_variable=True)
+                if "connectivities" not in adata.obsp:
+                    adata = run_neighbors(adata, n_neighbors=15)
+                adata = run_leiden(adata, resolution=1.0)
             adata = run_markers(adata, groupby=group_by, n_genes=n_genes)
             df = get_marker_table(adata)
             top5 = df[df["pval_adj"] < 0.05].groupby("group").head(5) if "pval_adj" in df.columns else df.head(20)
+            if not output:
+                output = path
+            write_h5ad(adata, Path(output))
             return StepOutcome({
                 "status": "success",
+                "output": str(output),
                 "n_genes": len(df),
                 "top_markers": top5.to_dict(orient="records")[:30],
             }, next_prompt="\n")
         except Exception as e:
-            return StepOutcome({"status": "error", "msg": str(e)}, next_prompt="\n")
+            import traceback
+            return StepOutcome({"status": "error", "msg": f"{e}\n{traceback.format_exc()}"}, next_prompt="\n")
 
     def do_omics_scrna_annotate(self, args: dict, response) -> StepOutcome:
         path = self._resolve(args.get("input", ""))
@@ -310,11 +368,33 @@ class OmicsAgentHandler(BaseHandler):
             from omics.sdk import VizSDK
             from omics.utils.io import read_h5ad
             adata = read_h5ad(Path(path))
+            if "X_umap" not in adata.obsm:
+                from omics.scrna.normalize import run_normalize
+                from omics.scrna.hvg import run_hvg
+                from omics.scrna.pca import run_pca
+                from omics.scrna.neighbors import run_neighbors
+                from omics.scrna.umap import run_umap
+                if "log1p" not in adata.layers:
+                    adata = run_normalize(adata, target_sum=10000)
+                if "highly_variable" not in adata.var:
+                    adata = run_hvg(adata, n_top_genes=2000)
+                if "X_pca" not in adata.obsm:
+                    adata = run_pca(adata, n_comps=50, use_highly_variable=True)
+                if "connectivities" not in adata.obsp:
+                    adata = run_neighbors(adata, n_neighbors=15)
+                adata = run_umap(adata)
+            if color not in adata.obs.columns and color == "leiden":
+                from omics.scrna.cluster import run_leiden
+                if "connectivities" not in adata.obsp:
+                    from omics.scrna.neighbors import run_neighbors
+                    adata = run_neighbors(adata, n_neighbors=15)
+                adata = run_leiden(adata, resolution=1.0)
             sdk_viz = VizSDK(None)
             sdk_viz.umap(adata, color=color, output_path=output)
             return StepOutcome({"status": "success", "output": output, "color": color}, next_prompt="\n")
         except Exception as e:
-            return StepOutcome({"status": "error", "msg": str(e)}, next_prompt="\n")
+            import traceback
+            return StepOutcome({"status": "error", "msg": f"{e}\n{traceback.format_exc()}"}, next_prompt="\n")
 
     def do_omics_compose_figure(self, args: dict, response) -> StepOutcome:
         path = self._resolve(args.get("input", ""))

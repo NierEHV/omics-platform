@@ -47,8 +47,37 @@ def read_h5ad(path: Path) -> ad.AnnData:
 def write_h5ad(adata: ad.AnnData, path: Path, **kwargs) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
+    _fix_string_dtype(adata)
     adata.write(path, **kwargs)
     logger.debug(f"Written: {path} ({adata.n_obs} obs x {adata.n_vars} vars)")
+
+
+def _fix_string_dtype(adata: ad.AnnData) -> None:
+    """Convert pandas extension dtypes to numpy types for h5py compat.
+
+    Newer pandas (3.x) uses extension arrays (StringDtype, ArrowDtype,
+    etc.) which h5py can't serialize. Force them to numpy dtypes.
+    """
+    import pandas as pd
+    import numpy as np
+
+    for df in (adata.obs, adata.var):
+        for col in df.columns:
+            col_dtype = df[col].dtype
+            # Check all known extension dtypes
+            if isinstance(col_dtype, pd.api.extensions.ExtensionDtype):
+                try:
+                    df[col] = df[col].to_numpy(dtype=object, na_value=None)
+                except Exception:
+                    df[col] = df[col].astype(object)
+
+    # Fix index dtype too (obs_names, var_names)
+    for idx_name in ("obs_names", "var_names"):
+        idx = getattr(adata, idx_name, None)
+        if idx is not None and hasattr(idx, "dtype"):
+            if isinstance(idx.dtype, pd.api.extensions.ExtensionDtype):
+                new_idx = idx.to_numpy(dtype=object, na_value="")
+                setattr(adata, f"_{idx_name}", pd.Index(new_idx))
 
 
 def get_adata_summary(adata: ad.AnnData) -> str:
